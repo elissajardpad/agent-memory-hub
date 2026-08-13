@@ -210,12 +210,12 @@ class MCPHandler(BaseHTTPRequestHandler):
                     return
                 
                 data = {"fact": fact, "kind": kind, "scope": scope}
-                result = mc.rest("facts", method="POST", data=data)
+                mc.write("facts", data, method="POST")
                 
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json; charset=utf-8')
                 self.end_headers()
-                self.wfile.write(json.dumps({"success": True, "data": result}, ensure_ascii=False).encode('utf-8'))
+                self.wfile.write(json.dumps({"success": True, "fact": fact}, ensure_ascii=False).encode('utf-8'))
             
             except Exception as e:
                 self.send_error(500, str(e))
