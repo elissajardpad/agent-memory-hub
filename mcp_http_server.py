@@ -10,6 +10,11 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'scripts'))
 import memory_client as mc
 
+# Debug: print env vars
+print(f"[DEBUG] SUPABASE_URL: {mc.URL}")
+print(f"[DEBUG] PUBKEY exists: {bool(mc.PUBKEY)}")
+print(f"[DEBUG] PUBKEY prefix: {mc.PUBKEY[:20] if mc.PUBKEY else 'NONE'}...")
+
 PORT = int(os.getenv('PORT', 8080))
 
 TOOLS = [
