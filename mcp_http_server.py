@@ -1,37 +1,16 @@
 #!/usr/bin/env python3
-import asyncio
+"""MCP HTTP server for agent memory hub"""
 import json
-import os
 import sys
-from typing import AsyncIterator
+import os
+import urllib.parse
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
+# Add scripts to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'scripts'))
-
-try:
-    from fastapi import FastAPI, Request
-    from fastapi.responses import StreamingResponse
-    from fastapi.middleware.cors import CORSMiddleware
-except ImportError:
-    import subprocess
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "fastapi", "uvicorn[standard]"])
-    from fastapi import FastAPI, Request
-    from fastapi.responses import StreamingResponse
-    from fastapi.middleware.cors import CORSMiddleware
-
 import memory_client as mc
 
-app = FastAPI(title="agent-memory-hub MCP Server")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-PROTOCOL_VERSION = "2024-11-05"
-SERVER_INFO = {"name": "agent-memory-hub", "version": "1.0.0"}
+PORT = int(os.getenv('PORT', 8080))
 
 TOOLS = [
     {
@@ -57,7 +36,6 @@ TOOLS = [
     },
 ]
 
-
 def handle_tool_call(name: str, arguments: dict):
     """Handle MCP tool calls"""
     try:
@@ -67,7 +45,8 @@ def handle_tool_call(name: str, arguments: dict):
             limit = arguments.get("limit", 5)
             
             # Search facts table using text search
-            search_query = f"facts?fact=ilike.*{query}*&limit={limit}"
+            query_encoded = urllib.parse.quote(f"%{query}%")
+            search_query = f"facts?fact=ilike.{query_encoded}&limit={limit}"
             if project:
                 search_query += f"&scope=eq.{project}"
             
@@ -127,183 +106,64 @@ def handle_tool_call(name: str, arguments: dict):
             "isError": True
         }
 
-async def sse_generator(request_data: dict) -> AsyncIterator[str]:
-    method = request_data.get("method")
-    req_id = request_data.get("id")
-    
-    if method == "initialize":
-        response = {
-            "jsonrpc": "2.0",
-            "id": req_id,
-            "result": {
-                "protocolVersion": PROTOCOL_VERSION,
-                "serverInfo": SERVER_INFO,
-                "capabilities": {"tools": {}},
-            }
-        }
-        yield f"data: {json.dumps(response)}\n\n"
-    
-    elif method == "tools/list":
-        response = {
-            "jsonrpc": "2.0",
-            "id": req_id,
-            "result": {"tools": TOOLS}
-        }
-        yield f"data: {json.dumps(response)}\n\n"
-    
-    elif method == "tools/call":
-        params = request_data.get("params", {})
-        tool_name = params.get("name")
-        arguments = params.get("arguments", {})
-        result = handle_tool_call(tool_name, arguments)
-        response = {
-            "jsonrpc": "2.0",
-            "id": req_id,
-            "result": result
-        }
-        yield f"data: {json.dumps(response)}\n\n"
-    
-    else:
-        error_response = {
-            "jsonrpc": "2.0",
-            "id": req_id,
-            "error": {"code": -32601, "message": f"Method not found: {method}"}
-        }
-        yield f"data: {json.dumps(error_response)}\n\n"
-
-
-@app.get("/")
-async def root():
-    return {"service": "agent-memory-hub", "status": "running"}
-
-
-@app.get("/health")
-async def health():
-    try:
-        mc.rest("sessions?select=session_id&limit=1")
-        return {"status": "healthy"}
-    except Exception as e:
-        return {"status": "unhealthy", "error": str(e)}
-
-
-@app.get("/sse")
-async def sse_endpoint(request: Request):
-    """SSE endpoint for MCP protocol - persistent connection"""
-    async def event_stream():
-        # Send initial ready event
-        yield f"data: {json.dumps({'jsonrpc': '2.0', 'method': 'ready'})}\n\n"
+class MCPHandler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        if self.path != '/mcp':
+            self.send_error(404)
+            return
         
-        # Keep connection alive
-        while True:
-            await asyncio.sleep(30)
-            yield f": heartbeat\n\n"
-    
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no"
-        }
-    )
-
-@app.post("/message")
-async def message_endpoint(request: Request):
-    """POST endpoint for sending MCP messages"""
-    try:
-        body = await request.json()
-        method = body.get("method")
-        req_id = body.get("id")
+        content_length = int(self.headers.get('Content-Length', 0))
+        body = self.rfile.read(content_length).decode('utf-8')
         
-        if method == "initialize":
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": {
-                    "protocolVersion": PROTOCOL_VERSION,
-                    "serverInfo": SERVER_INFO,
-                    "capabilities": {"tools": {}},
+        try:
+            req = json.loads(body)
+            method = req.get('method')
+            
+            if method == 'tools/list':
+                response = {
+                    "jsonrpc": "2.0",
+                    "id": req.get('id'),
+                    "result": {"tools": TOOLS}
                 }
-            }
-        
-        elif method == "tools/list":
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": {"tools": TOOLS}
-            }
-        
-        elif method == "tools/call":
-            params = body.get("params", {})
-            tool_name = params.get("name")
-            arguments = params.get("arguments", {})
-            result = handle_tool_call(tool_name, arguments)
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": result
-            }
-        
-        else:
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "error": {"code": -32601, "message": f"Method not found: {method}"}
-            }
-    
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.post("/mcp")
-async def mcp_endpoint(request: Request):
-    """Simple HTTP endpoint for MCP protocol"""
-    try:
-        body = await request.json()
-        method = body.get("method")
-        req_id = body.get("id")
-        
-        if method == "initialize":
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": {
-                    "protocolVersion": PROTOCOL_VERSION,
-                    "serverInfo": SERVER_INFO,
-                    "capabilities": {"tools": {}},
+            
+            elif method == 'tools/call':
+                params = req.get('params', {})
+                name = params.get('name')
+                arguments = params.get('arguments', {})
+                
+                result = handle_tool_call(name, arguments)
+                
+                response = {
+                    "jsonrpc": "2.0",
+                    "id": req.get('id'),
+                    "result": result
                 }
-            }
+            
+            else:
+                response = {
+                    "jsonrpc": "2.0",
+                    "id": req.get('id'),
+                    "error": {"code": -32601, "message": f"Method not found: {method}"}
+                }
+            
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(response).encode('utf-8'))
         
-        elif method == "tools/list":
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": {"tools": TOOLS}
-            }
-        
-        elif method == "tools/call":
-            params = body.get("params", {})
-            tool_name = params.get("name")
-            arguments = params.get("arguments", {})
-            result = handle_tool_call(tool_name, arguments)
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": result
-            }
-        
-        else:
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "error": {"code": -32601, "message": f"Method not found: {method}"}
-            }
+        except Exception as e:
+            self.send_error(400, str(e))
     
-    except Exception as e:
-        return {"jsonrpc": "2.0", "error": {"code": -32603, "message": str(e)}}
+    def do_GET(self):
+        if self.path == '/health':
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "healthy"}).encode('utf-8'))
+        else:
+            self.send_error(404)
 
-
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.getenv("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+if __name__ == '__main__':
+    server = HTTPServer(('0.0.0.0', PORT), MCPHandler)
+    print(f"MCP server listening on port {PORT}")
+    server.serve_forever()
