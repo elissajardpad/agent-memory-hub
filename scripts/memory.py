@@ -59,7 +59,7 @@ def fmt_date(iso):
 
 # ---- commands -------------------------------------------------------------
 def cmd_stats(_args):
-    s = rest("sessions?select=id")
+    s = rest("sessions?select=session_id")
     tools = rest("sessions?select=tool")
     facts = rest("facts?select=id&valid_until=is.null")
     by_tool = {}

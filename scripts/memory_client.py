@@ -52,9 +52,9 @@ ENV = load_env(ENV_PATH)
 URL = os.environ.get("SUPABASE_URL") or ENV.get("SUPABASE_URL")
 KEY = os.environ.get("SUPABASE_SECRET_KEY") or ENV.get("SUPABASE_SECRET_KEY")
 EK = os.environ.get("EMBED_KEY") or ENV.get("EMBED_KEY")
-H = {"apikey": KEY or "", "Authorization": f"Bearer {KEY or ''}", "Content-Type": "application/json"}
-
-
+# New Supabase key format: both apikey and Authorization use publishable
+PUBKEY = os.environ.get("SUPABASE_PUBLISHABLE_KEY") or ENV.get("SUPABASE_PUBLISHABLE_KEY")
+H = {"apikey": PUBKEY or "", "Authorization": f"Bearer {PUBKEY or ''}", "Content-Type": "application/json"}
 # ---- acesso de baixo nível -------------------------------------------------
 def rest(path):
     req = urllib.request.Request(f"{URL}/rest/v1/{path}", headers=H)
