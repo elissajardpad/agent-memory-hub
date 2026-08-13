@@ -204,6 +204,53 @@ async def message_endpoint(request: Request):
     except Exception as e:
         return {"error": str(e)}
 
+@app.post("/mcp")
+async def mcp_endpoint(request: Request):
+    """Simple HTTP endpoint for MCP protocol"""
+    try:
+        body = await request.json()
+        method = body.get("method")
+        req_id = body.get("id")
+        
+        if method == "initialize":
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "protocolVersion": PROTOCOL_VERSION,
+                    "serverInfo": SERVER_INFO,
+                    "capabilities": {"tools": {}},
+                }
+            }
+        
+        elif method == "tools/list":
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {"tools": TOOLS}
+            }
+        
+        elif method == "tools/call":
+            params = body.get("params", {})
+            tool_name = params.get("name")
+            arguments = params.get("arguments", {})
+            result = handle_tool_call(tool_name, arguments)
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": result
+            }
+        
+        else:
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "error": {"code": -32601, "message": f"Method not found: {method}"}
+            }
+    
+    except Exception as e:
+        return {"jsonrpc": "2.0", "error": {"code": -32603, "message": str(e)}}
+
 
 if __name__ == "__main__":
     import uvicorn
