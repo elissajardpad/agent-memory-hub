@@ -55,32 +55,30 @@ def handle_tool_call(name: str, arguments: dict):
             if project:
                 search_query += f"&scope=eq.{project}"
             
-            results = mc.rest(search_query)
-            
-            # Debug
-            print(f"[DEBUG] Query: {search_query}")
-            print(f"[DEBUG] Results count: {len(results)}")
-            if results:
-                print(f"[DEBUG] First result: {results[0]}")
-            
-            # Format results
-            formatted = []
-            for r in results:
-                formatted.append({
-                    "fact": r.get("fact", ""),
-                    "kind": r.get("kind", ""),
-                    "scope": r.get("scope", ""),
-                    "created_at": r.get("created_at", "")
-                })
-            
-            return {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json.dumps(formatted, ensure_ascii=False, indent=2)
-                    }
-                ]
-            }
+            # Debug: return raw query and results
+            try:
+                results = mc.rest(search_query)
+                debug_info = {
+                    "query_string": search_query,
+                    "results_count": len(results),
+                    "raw_results": results[:2] if results else [],  # 只返回前2条
+                    "supabase_url": mc.URL,
+                    "has_pubkey": bool(mc.PUBKEY)
+                }
+                
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": json.dumps(debug_info, ensure_ascii=False, indent=2)
+                        }
+                    ]
+                }
+            except Exception as e:
+                return {
+                    "content": [{"type": "text", "text": f"Error: {str(e)}"}],
+                    "isError": True
+                }
         
         elif name == "recent_sessions":
             limit = arguments.get("limit", 10)
