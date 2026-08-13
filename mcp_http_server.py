@@ -49,36 +49,28 @@ def handle_tool_call(name: str, arguments: dict):
             project = arguments.get("project")
             limit = arguments.get("limit", 5)
             
-            # Search facts table using text search
             query_encoded = urllib.parse.quote(f"%{query}%")
             search_query = f"facts?fact=ilike.{query_encoded}&limit={limit}"
             if project:
                 search_query += f"&scope=eq.{project}"
             
-            # Debug: return raw query and results
-            try:
-                results = mc.rest(search_query)
-                debug_info = {
-                    "query_string": search_query,
-                    "results_count": len(results),
-                    "raw_results": results[:2] if results else [],  # 只返回前2条
-                    "supabase_url": mc.URL,
-                    "has_pubkey": bool(mc.PUBKEY)
-                }
-                
-                return {
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": json.dumps(debug_info, ensure_ascii=False, indent=2)
-                        }
-                    ]
-                }
-            except Exception as e:
-                return {
-                    "content": [{"type": "text", "text": f"Error: {str(e)}"}],
-                    "isError": True
-                }
+            results = mc.rest(search_query)
+            
+            formatted = []
+            for r in results:
+                formatted.append({
+                    "fact": r.get("fact", ""),
+                    "kind": r.get("kind", ""),
+                    "scope": r.get("scope", ""),
+                    "created_at": r.get("created_at", "")
+                })
+            
+            return {
+                "content": [{
+                    "type": "text",
+                    "text": json.dumps(formatted, ensure_ascii=False, indent=2)
+                }]
+            }
         
         elif name == "recent_sessions":
             limit = arguments.get("limit", 10)
