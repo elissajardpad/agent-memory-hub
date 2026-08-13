@@ -161,6 +161,40 @@ class MCPHandler(BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps({"status": "healthy"}).encode('utf-8'))
+        
+        elif self.path.startswith('/recall'):
+            try:
+                from urllib.parse import urlparse, parse_qs
+                parsed = urlparse(self.path)
+                params = parse_qs(parsed.query)
+                
+                query = params.get('query', [''])[0]
+                limit = int(params.get('limit', ['5'])[0])
+                
+                if not query:
+                    self.send_error(400, "query parameter required")
+                    return
+                
+                query_encoded = urllib.parse.quote(f"%{query}%")
+                search_query = f"facts?fact=ilike.{query_encoded}&limit={limit}"
+                results = mc.rest(search_query)
+                
+                formatted = []
+                for r in results:
+                    formatted.append({
+                        "fact": r.get("fact", ""),
+                        "kind": r.get("kind", ""),
+                        "scope": r.get("scope", "")
+                    })
+                
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json; charset=utf-8')
+                self.end_headers()
+                self.wfile.write(json.dumps(formatted, ensure_ascii=False).encode('utf-8'))
+            
+            except Exception as e:
+                self.send_error(500, str(e))
+        
         else:
             self.send_error(404)
 
