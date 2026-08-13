@@ -125,4 +125,4 @@ async def sse_generator(request_data: dict) -> AsyncIterator[str]:
         response = {
             "jsonrpc": "2.0",
             "id": request_data.get("id"),
-            "r
+            "result": {
