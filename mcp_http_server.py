@@ -84,36 +84,7 @@ def handle_tool_call(name: str, arguments: dict):
                     }
                 ]
             }
-        elif self.path.startswith('/add'):
-            try:
-                from urllib.parse import urlparse, parse_qs
-                parsed = urlparse(self.path)
-                params = parse_qs(parsed.query)
-                
-                fact = params.get('fact', [''])[0]
-                kind = params.get('kind', ['detail'])[0]
-                scope = params.get('scope', ['三日月和紬的日常'])[0]
-                
-                if not fact:
-                    self.send_error(400, "fact parameter required")
-                    return
-                
-                # Insert into Supabase
-                data = {
-                    "fact": fact,
-                    "kind": kind,
-                    "scope": scope
-                }
-                result = mc.rest("facts", method="POST", data=data)
-                
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/json; charset=utf-8')
-                self.end_headers()
-                self.wfile.write(json.dumps({"success": True, "data": result}, ensure_ascii=False).encode('utf-8'))
-            
-            except Exception as e:
-                self.send_error(500, str(e))
-
+        
         else:
             return {
                 "content": [
@@ -220,6 +191,31 @@ class MCPHandler(BaseHTTPRequestHandler):
                 self.send_header('Content-Type', 'application/json; charset=utf-8')
                 self.end_headers()
                 self.wfile.write(json.dumps(formatted, ensure_ascii=False).encode('utf-8'))
+            
+            except Exception as e:
+                self.send_error(500, str(e))
+        
+        elif self.path.startswith('/add'):
+            try:
+                from urllib.parse import urlparse, parse_qs
+                parsed = urlparse(self.path)
+                params = parse_qs(parsed.query)
+                
+                fact = params.get('fact', [''])[0]
+                kind = params.get('kind', ['detail'])[0]
+                scope = params.get('scope', ['三日月和紬的日常'])[0]
+                
+                if not fact:
+                    self.send_error(400, "fact parameter required")
+                    return
+                
+                data = {"fact": fact, "kind": kind, "scope": scope}
+                result = mc.rest("facts", method="POST", data=data)
+                
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json; charset=utf-8')
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": True, "data": result}, ensure_ascii=False).encode('utf-8'))
             
             except Exception as e:
                 self.send_error(500, str(e))
