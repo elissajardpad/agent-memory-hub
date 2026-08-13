@@ -135,18 +135,72 @@ async def health():
         return {"status": "unhealthy", "error": str(e)}
 
 
-@app.post("/sse")
+@app.get("/sse")
 async def sse_endpoint(request: Request):
+    """SSE endpoint for MCP protocol - persistent connection"""
+    async def event_stream():
+        # Send initial ready event
+        yield f"data: {json.dumps({'jsonrpc': '2.0', 'method': 'ready'})}\n\n"
+        
+        # Keep connection alive
+        while True:
+            await asyncio.sleep(30)
+            yield f": heartbeat\n\n"
+    
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+@app.post("/message")
+async def message_endpoint(request: Request):
+    """POST endpoint for sending MCP messages"""
     try:
         body = await request.json()
-        return StreamingResponse(
-            sse_generator(body),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
+        method = body.get("method")
+        req_id = body.get("id")
+        
+        if method == "initialize":
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "protocolVersion": PROTOCOL_VERSION,
+                    "serverInfo": SERVER_INFO,
+                    "capabilities": {"tools": {}},
+                }
             }
-        )
+        
+        elif method == "tools/list":
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {"tools": TOOLS}
+            }
+        
+        elif method == "tools/call":
+            params = body.get("params", {})
+            tool_name = params.get("name")
+            arguments = params.get("arguments", {})
+            result = handle_tool_call(tool_name, arguments)
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": result
+            }
+        
+        else:
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "error": {"code": -32601, "message": f"Method not found: {method}"}
+            }
+    
     except Exception as e:
         return {"error": str(e)}
 
