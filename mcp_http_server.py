@@ -58,23 +58,74 @@ TOOLS = [
 ]
 
 
-def handle_tool_call(name: str, arguments: dict) -> dict:
+def handle_tool_call(name: str, arguments: dict):
+    """Handle MCP tool calls"""
     try:
         if name == "recall_relevant":
             query = arguments.get("query", "")
             project = arguments.get("project")
-            limit = arguments.get("limit", 8)
-            results = mc.recall(query, project, limit)
-            return {"content": [{"type": "text", "text": json.dumps(results, ensure_ascii=False, indent=2)}]}
+            limit = arguments.get("limit", 5)
+            
+            # Search facts table using text search
+            search_query = f"facts?fact=ilike.*{query}*&limit={limit}"
+            if project:
+                search_query += f"&scope=eq.{project}"
+            
+            results = mc.rest(search_query)
+            
+            # Format results
+            formatted = []
+            for r in results:
+                formatted.append({
+                    "fact": r.get("fact", ""),
+                    "kind": r.get("kind", ""),
+                    "scope": r.get("scope", ""),
+                    "created_at": r.get("created_at", "")
+                })
+            
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps(formatted, ensure_ascii=False, indent=2)
+                    }
+                ]
+            }
+        
         elif name == "recent_sessions":
             limit = arguments.get("limit", 10)
-            results = mc.recent(limit)
-            return {"content": [{"type": "text", "text": json.dumps(results, ensure_ascii=False, indent=2)}]}
+            results = mc.rest(f"sessions?select=*&order=created_at.desc&limit={limit}")
+            
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps(results, ensure_ascii=False, indent=2)
+                    }
+                ]
+            }
+        
         else:
-            return {"content": [{"type": "text", "text": f"Unknown tool: {name}"}], "isError": True}
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"Unknown tool: {name}"
+                    }
+                ],
+                "isError": True
+            }
+    
     except Exception as e:
-        return {"content": [{"type": "text", "text": f"Error: {str(e)}"}], "isError": True}
-
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": f"Error: {str(e)}"
+                }
+            ],
+            "isError": True
+        }
 
 async def sse_generator(request_data: dict) -> AsyncIterator[str]:
     method = request_data.get("method")
