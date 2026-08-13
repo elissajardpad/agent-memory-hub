@@ -57,6 +57,12 @@ def handle_tool_call(name: str, arguments: dict):
             
             results = mc.rest(search_query)
             
+            # Debug
+            print(f"[DEBUG] Query: {search_query}")
+            print(f"[DEBUG] Results count: {len(results)}")
+            if results:
+                print(f"[DEBUG] First result: {results[0]}")
+            
             # Format results
             formatted = []
             for r in results:
